@@ -376,7 +376,18 @@ const SCENES = [
   { f: sOutro, a: 20.7, b: 25.01, enter: riseWipe(20.7, 21.0) },
 ];
 
-function draw(t) {
+// voiceover version: piecewise-linear map from voice timeline to the designed timeline
+let KNOTS = null;
+function remap(t) {
+  if (!KNOTS) return t;
+  for (let i = 1; i < KNOTS.length; i++) {
+    const [n1, o1] = KNOTS[i];
+    if (t <= n1) { const [n0, o0] = KNOTS[i - 1]; return lerp(o0, o1, (t - n0) / (n1 - n0)); }
+  }
+  return KNOTS[KNOTS.length - 1][1];
+}
+function draw(tv) {
+  const t = Math.min(remap(tv), DUR - 1e-3);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.letterSpacing = '0px';
   bg(COL.red);
@@ -395,7 +406,14 @@ function draw(t) {
 
 // ---------- boot ----------
 const RENDER = new URLSearchParams(location.search).has('render');
+const VO = new URLSearchParams(location.search).has('vo');
+let TOTAL = DUR;
 window.ready = (async () => {
+  if (VO) {
+    const k = await (await fetch('vo/knots.json')).json();
+    KNOTS = k.knots; TOTAL = k.duration;
+    document.getElementById('a').src = 'soundtrack_vo.wav';
+  }
   await Promise.all(['500 100px "Inter Tight"', '600 100px "Inter Tight"', '800 100px "Inter Tight"', '900 100px "Inter Tight"'].map(f => document.fonts.load(f)));
   window.draw = draw;
   return true;
@@ -407,8 +425,8 @@ else window.ready.then(() => {
   cv.addEventListener('click', () => { audio.currentTime = 0; audio.play().catch(() => {}); playing = true; document.getElementById('hint').style.display = 'none'; });
   audio.addEventListener('ended', () => { audio.currentTime = 0; audio.play(); });
   const loop = now => {
-    const t = playing && !audio.paused ? audio.currentTime : ((now - start) / 1000) % DUR;
-    draw(Math.min(t, DUR - 1e-3));
+    const t = playing && !audio.paused ? audio.currentTime : ((now - start) / 1000) % TOTAL;
+    draw(Math.min(t, TOTAL - 1e-3));
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);

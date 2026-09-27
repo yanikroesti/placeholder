@@ -1,10 +1,20 @@
 """Soundtrack for the Abstimmung video: 25s, 120 BPM, C major, with an 808-style cowbell.
 Every hit is timed to the visual events in motion.js (see the EVENT TIMES section)."""
-import wave
+import json, os, sys, wave
 import numpy as np
 from scipy.signal import lfilter, butter
 
 SR, DUR, BPM = 48000, 25.0, 120
+# `python3 soundtrack.py vo` builds the voiceover mix: sound effects follow the re-timed
+# animation (vo/knots.json), the groove stays on a steady grid, music ducks under the voice.
+VO = len(sys.argv) > 1 and sys.argv[1] == 'vo'
+if VO:
+    _k = json.load(open('vo/knots.json'))
+    DUR = _k['duration']
+    _new, _old = np.array(_k['knots']).T
+    M = lambda t: float(np.interp(t, _old, _new))
+else:
+    M = lambda t: t
 BEAT = 60 / BPM
 N = int(SR * DUR)
 rng = np.random.default_rng(3)
@@ -19,8 +29,8 @@ def env(n, a=0.002, d=0.2, curve=6.0):
     return e
 
 
-def add(sig, t, gain=1.0, pan=0.0, verb=0.0):
-    i = int(t * SR)
+def add(sig, t, gain=1.0, pan=0.0, verb=0.0, raw=False):
+    i = int((t if raw else M(t)) * SR)
     if i >= N: return
     sig = sig[: N - i] * gain
     L[i:i + len(sig)] += sig * np.sqrt(0.5 * (1 - pan))
@@ -145,27 +155,28 @@ add(pop(1200), 1.5, 0.3)
 add(riser(0.5), 2.0, 0.8)
 add(impact(), 2.47, 1.0, verb=0.3)
 
-GROOVE = lambda t: 2.5 <= t < 24.4
+G0, G1 = M(2.5), M(24.4)
+GROOVE = lambda t: G0 <= t < G1
 for b in range(int(DUR / BEAT)):
     t = b * BEAT
     if not GROOVE(t): continue
-    add(kick(), t, 0.85)
-    if b % 2 == 0: add(clap(), t, 0.4, pan=0.05, verb=0.3)
-    add(hat(), t + BEAT / 2, 0.22, pan=0.35)
-    add(hat(), t + BEAT / 4, 0.09, pan=-0.35); add(hat(), t + 3 * BEAT / 4, 0.09, pan=-0.35)
-    if b % 4 == 3: add(cowbell(0.2), t + 3 * BEAT / 4, 0.18, pan=-0.3)
+    add(kick(), t, 0.85, raw=True)
+    if b % 2 == 0: add(clap(), t, 0.4, pan=0.05, verb=0.3, raw=True)
+    add(hat(), t + BEAT / 2, 0.22, pan=0.35, raw=True)
+    add(hat(), t + BEAT / 4, 0.09, pan=-0.35, raw=True); add(hat(), t + 3 * BEAT / 4, 0.09, pan=-0.35, raw=True)
+    if b % 4 == 3: add(cowbell(0.2), t + 3 * BEAT / 4, 0.18, pan=-0.3, raw=True)
 
-for bar in range(12):
-    t0 = 2.5 + bar * 2.0
-    if t0 >= 24.4: break
+for bar in range(40):
+    t0 = G0 + bar * 2.0
+    if t0 >= G1: break
     root, chord = CHORDS[bar % 4]
     for e in range(8):
         t = t0 + e * BEAT / 2
         if e % 2 == 1 or e in (0, 6):
-            add(tone(NOTE(root), 0.2, 'saw', 9, 0.004), t, 0.12)
-            add(tone(NOTE(root - 12), 0.22, 'sine', 7), t, 0.28)
+            add(tone(NOTE(root), 0.2, 'saw', 9, 0.004), t, 0.12, raw=True)
+            add(tone(NOTE(root - 12), 0.22, 'sine', 7), t, 0.28, raw=True)
     for m in chord:
-        add(lp(tone(NOTE(m), 2.1, 'saw', 0.5, 0.25), 1400), t0, 0.03, pan=(m % 3 - 1) * 0.4, verb=0.5)
+        add(lp(tone(NOTE(m), 2.1, 'saw', 0.5, 0.25), 1400), t0, 0.03, pan=(m % 3 - 1) * 0.4, verb=0.5, raw=True)
 
 # overview
 for i, t in enumerate((2.75, 2.95, 3.15, 3.35)): add(pop(700 + i * 120), t, 0.3, pan=-0.3 + 0.2 * i)
@@ -222,9 +233,20 @@ L += rv; R += np.roll(rv, 331)
 mix = np.stack([L, R], 1)
 mix = np.tanh(mix * 1.3) / np.tanh(1.3)
 mix /= np.abs(mix).max() / 0.89
+if VO:
+    with wave.open('vo/voice.wav') as w:
+        v = np.frombuffer(w.readframes(w.getnframes()), '<i2') / 32768
+    v = np.pad(v, (0, max(0, N - len(v))))[:N]
+    v = hp(v, 90)
+    env = lp(np.abs(v), 6)                      # smooth voice envelope for ducking
+    env = np.clip(env / (env.max() + 1e-9) * 3, 0, 1)
+    mix *= (1 - 0.6 * env)[:, None] * 0.55
+    mix += np.stack([v, v], 1) * 0.9
+    mix = np.tanh(mix * 1.2) / np.tanh(1.2)
+    mix /= np.abs(mix).max() / 0.89
 fade = int(0.05 * SR); mix[:fade] *= np.linspace(0, 1, fade)[:, None]; mix[-fade:] *= np.linspace(1, 0, fade)[:, None]
 
-with wave.open('soundtrack.wav', 'wb') as w:
+with wave.open('soundtrack_vo.wav' if VO else 'soundtrack.wav', 'wb') as w:
     w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR)
     w.writeframes((mix * 32767).astype('<i2').tobytes())
-print('wrote soundtrack.wav', mix.shape[0] / SR, 's')
+print('wrote', 'soundtrack_vo.wav' if VO else 'soundtrack.wav', mix.shape[0] / SR, 's')

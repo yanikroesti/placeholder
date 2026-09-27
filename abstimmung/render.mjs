@@ -10,21 +10,21 @@ import os from 'node:os';
 
 const DIR = path.dirname(new URL(import.meta.url).pathname);
 const OUT = path.join(DIR, 'out');
-const FPS = 60, DUR = 25, FRAMES = FPS * DUR;
+const FPS = 60, DUR = Number(process.env.DUR || 25), FRAMES = Math.round(FPS * DUR);
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const args = process.argv.slice(2);
 const stills = args.includes('--stills') ? args[args.indexOf('--stills') + 1].split(',').map(Number) : null;
 const WORKERS = Number(process.env.WORKERS || Math.min(6, os.cpus().length));
 fs.mkdirSync(OUT, { recursive: true });
 
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.wav': 'audio/wav' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.wav': 'audio/wav', '.json': 'application/json' };
 const server = http.createServer((req, res) => {
   const p = path.join(DIR, decodeURIComponent(req.url.split('?')[0]));
   if (!p.startsWith(DIR) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { 'content-type': types[path.extname(p)] || 'application/octet-stream' });
   fs.createReadStream(p).pipe(res);
 }).listen(0);
-const url = `http://127.0.0.1:${server.address().port}/index.html?render`;
+const url = `http://127.0.0.1:${server.address().port}/index.html?render${process.env.QUERY || ''}`;
 
 const browser = await chromium.launch({ args: ['--force-color-profile=srgb'] });
 async function openPage() {
