@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Abstimmung 27.9.2026</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; margin: 0 auto; height: 100vh; width: auto; aspect-ratio: 9 / 16; cursor: pointer; }
+  body.render canvas { height: 1920px; width: 1080px; cursor: default; }
+  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    font: 500 14px "Inter Tight", sans-serif; color: #FFFFFF; opacity: .7; pointer-events: none; }
+  body.render #hint { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<div id="hint">Klicken zum Abspielen</div>
+<audio id="a" src="soundtrack.wav" preload="auto"></audio>
+<script src="motion.js"></script>
+</body>
+</html>
