@@ -6,3 +6,5 @@ abstimmung/out/
 abstimmung/vo/seg*.wav
 abstimmung_stimme/node_modules
 abstimmung_stimme/out/
+abstimmung_resultate/node_modules
+abstimmung_resultate/out/
